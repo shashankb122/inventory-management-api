@@ -1,107 +1,155 @@
-# Inventory Management API
+# Inventory Management System — REST API
 
-A production-grade REST API for inventory management built with **Spring Boot 3**, **PostgreSQL**, and **JWT authentication**. Features full CRUD across products, categories, and suppliers, plus stock movement tracking with low-stock alerting.
+A production-grade, secure RESTful API for inventory and warehouse stock management built with **Spring Boot 3.3**, **Java 21**, **PostgreSQL**, and **JWT Authentication**.
 
-## Endpoints
+Designed for enterprise reliability, it features full catalog management across products, categories, and suppliers, an immutable stock movement audit engine (`RESTOCK`, `SALE`, `ADJUSTMENT`, `RETURN`), and automated low-stock alerting.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/auth/register` | Register a new user |
-| `POST` | `/api/auth/login` | Login and receive JWT |
-| `GET` | `/api/products` | List products (search, filter, paginate, sort) |
-| `POST` | `/api/products` | Create a product |
-| `GET` | `/api/products/{id}` | Get product by ID |
-| `PUT` | `/api/products/{id}` | Update a product |
-| `DELETE` | `/api/products/{id}` | Delete a product |
-| `GET` | `/api/products/low-stock` | Get all low-stock products |
-| `POST` | `/api/products/{id}/stock` | Record stock movement |
-| `GET` | `/api/products/{id}/stock` | Get stock movement history |
-| `GET/POST/PUT/DELETE` | `/api/categories` | Category management |
-| `GET/POST/PUT/DELETE` | `/api/suppliers` | Supplier management |
+---
 
-Full interactive docs available at `/swagger-ui.html` when running.
-
-## Tech Stack
+## Architecture & Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | Spring Boot 3.3 |
-| Language | Java 21 |
-| Database | PostgreSQL 16 |
-| Auth | Spring Security + JWT (jjwt) |
-| Docs | SpringDoc OpenAPI / Swagger UI |
-| Testing | JUnit 5, Mockito, H2 (in-memory) |
-| Build | Maven |
-| Container | Docker, Docker Compose |
+| **Language & JDK** | Java 21 (LTS) |
+| **Framework** | Spring Boot 3.3 |
+| **Security** | Spring Security 6 + Stateless JWT (jjwt 0.12.5) |
+| **Database** | PostgreSQL 16 (H2 in-memory for testing) |
+| **ORM / Data Access** | Spring Data JPA / Hibernate |
+| **API Documentation** | SpringDoc OpenAPI 2.5.0 / Swagger UI |
+| **Build & Testing** | Maven, JUnit 5, Mockito |
+| **Containerization** | Docker, Docker Compose |
 
-## Getting Started
+---
 
-### Run with Docker (recommended)
+## Key Features
 
-```bash
-git clone <your-repo-url>
-cd inventory-api
-docker-compose up --build
-```
+- **Stateless JWT Security**: Role-based access control (`ROLE_USER`, `ROLE_ADMIN`), BCrypt password hashing, and token authorization.
+- **Stock Movement & Audit Engine**: Tracks every inventory mutation with exact before-and-after quantity snapshots and timestamped movement logs.
+- **Overdraw Protection**: Prevents negative stock counts on sales with automatic rejection and validation.
+- **Low-Stock Alerting**: Dynamic detection of items reaching or falling below custom threshold levels.
+- **Pagination, Sorting & Search**: High-performance querying with case-insensitive name search and relational filtering by category or supplier.
+- **Interactive Documentation**: Embedded Swagger UI at `/swagger-ui.html` with Bearer auth support.
 
-API available at `http://localhost:8080`
-Swagger UI at `http://localhost:8080/swagger-ui.html`
+---
 
-### Run locally
+## API Endpoints Reference
 
-```bash
-# Prerequisites: Java 21, Maven, PostgreSQL
+### Authentication (`/api/auth`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Register new user account | Public |
+| `POST` | `/api/auth/login` | Login and receive signed JWT token | Public |
 
-# Start a PostgreSQL instance then:
-export DATABASE_URL=jdbc:postgresql://localhost:5432/inventory
-export DB_USER=postgres
-export DB_PASSWORD=postgres
-export JWT_SECRET=c2VjcmV0a2V5Zm9yaW52ZW50b3J5YXBpMTIzNDU2Nzg5MA==
+### Products (`/api/products`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/products` | List products (search, filter by category/supplier, paginate, sort) | Bearer JWT |
+| `POST` | `/api/products` | Create a product with initial stock and thresholds | Bearer JWT |
+| `GET` | `/api/products/{id}` | Get product details by ID | Bearer JWT |
+| `PUT` | `/api/products/{id}` | Update product details | Bearer JWT |
+| `DELETE`| `/api/products/{id}` | Delete a product | Bearer JWT |
+| `GET` | `/api/products/low-stock`| Retrieve all products at or below low-stock threshold | Bearer JWT |
 
-mvn spring-boot:run
-```
+### Stock Movement & Audit (`/api/products/{id}/stock`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `POST` | `/api/products/{id}/stock`| Record inventory transaction (`RESTOCK`, `SALE`, `ADJUSTMENT`, `RETURN`) | Bearer JWT |
+| `GET` | `/api/products/{id}/stock`| Get complete historical stock movement audit trail | Bearer JWT |
 
-### Run tests
+### Categories & Suppliers (`/api/categories`, `/api/suppliers`)
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/categories` | List all categories | Bearer JWT |
+| `POST` | `/api/categories` | Create new category | Bearer JWT |
+| `GET` | `/api/categories/{id}` | Get category by ID | Bearer JWT |
+| `PUT` | `/api/categories/{id}` | Update category | Bearer JWT |
+| `DELETE`| `/api/categories/{id}` | Delete category | Bearer JWT |
+| `GET` | `/api/suppliers` | List all suppliers | Bearer JWT |
+| `POST` | `/api/suppliers` | Create new supplier | Bearer JWT |
+| `GET` | `/api/suppliers/{id}` | Get supplier by ID | Bearer JWT |
+| `PUT` | `/api/suppliers/{id}` | Update supplier | Bearer JWT |
+| `DELETE`| `/api/suppliers/{id}` | Delete supplier | Bearer JWT |
 
-```bash
-mvn test
-```
+---
 
-## Authentication Flow
+## Stock Movement State Machine
 
-```
-POST /api/auth/register   → create account
-POST /api/auth/login      → receive JWT token
-GET  /api/products        → Authorization: Bearer <token>
-```
-
-All endpoints except `/api/auth/**` require a valid JWT in the `Authorization` header.
-
-## Stock Movements
-
-The API tracks every inventory change through the `POST /api/products/{id}/stock` endpoint:
+All inventory changes are logged through `POST /api/products/{id}/stock`:
 
 ```json
 {
   "type": "RESTOCK",
   "quantity": 50,
-  "note": "Weekly supplier delivery"
+  "note": "Shipment from vendor PO-4820"
 }
 ```
 
-Movement types: `RESTOCK` · `SALE` · `ADJUSTMENT` · `RETURN`
+- **`RESTOCK` / `RETURN`**: Adds quantity (`after = before + quantity`)
+- **`SALE`**: Deducts quantity (`after = before - quantity`). Throws `400 Bad Request` if stock is insufficient.
+- **`ADJUSTMENT`**: Sets current count directly to the specified quantity (`after = quantity`).
 
-Each movement records `stockBefore` and `stockAfter` for a full audit trail.
+---
+
+## Getting Started
+
+### Option 1: Run with Docker Compose (Recommended)
+
+```bash
+docker-compose up --build
+```
+
+- API Base URL: `http://localhost:8080`
+- Interactive Swagger UI: `http://localhost:8080/swagger-ui.html`
+
+### Option 2: Run Locally with Maven
+
+#### Prerequisites
+- Java 21+
+- Apache Maven 3.8+
+- PostgreSQL 16 running on port 5432
+
+#### Configure & Run
+```bash
+# Windows PowerShell
+$env:DATABASE_URL="jdbc:postgresql://localhost:5432/inventory"
+$env:DB_USER="postgres"
+$env:DB_PASSWORD="your_postgres_password"
+$env:JWT_SECRET="c2VjcmV0a2V5Zm9yaW52ZW50b3J5YXBpMTIzNDU2Nzg5MA=="
+
+mvn spring-boot:run
+```
+
+### Run Unit & Integration Tests
+
+```bash
+mvn clean test
+```
+
+---
 
 ## Project Structure
 
 ```
-src/main/java/com/jamesbeech/inventory/
-├── controller/       # REST controllers
-├── service/          # Business logic
-├── repository/       # Spring Data JPA repositories
-├── model/            # JPA entities
-├── security/         # JWT filter, UserDetailsService, SecurityConfig
-├── exception/        # Global exception handler + custom exceptions
-└── config/           # OpenAPI / Swagger config
+src/
+├── main/
+│   ├── java/com/inventory/
+│   │   ├── config/          # OpenAPI & Swagger documentation configuration
+│   │   ├── controller/      # REST API controllers & validation DTOs
+│   │   ├── exception/       # Centralized @RestControllerAdvice exception handler
+│   │   ├── model/           # JPA entities (Product, Category, Supplier, StockMovement, User)
+│   │   ├── repository/      # Spring Data JPA repositories & custom JPQL queries
+│   │   ├── security/        # JWT utilities, OncePerRequestFilter, SecurityFilterChain
+│   │   ├── service/         # Transactional business logic & stock state machine
+│   │   └── InventoryApplication.java
+│   └── resources/
+│       └── application.properties
+└── test/
+    └── java/com/inventory/
+        └── ProductServiceTest.java
 ```
+
+---
+
+## Author
+
+**Shashank** — Backend Engineer
